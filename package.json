@@ -1,0 +1,29 @@
+{
+  "name": "pocketguard",
+  "version": "1.0.0",
+  "description": "PocketGuard - Personal Wallet & Two-Sided Money Lending Tracker with Real-Time Chat & AI Insights",
+  "scripts": {
+    "dev": "concurrently -n \"SERVER,CLIENT\" -c \"bgBlue.bold,bgMagenta.bold\" \"npm --prefix server run dev\" \"npm --prefix client run dev\"",
+    "start": "node server/server.js",
+    "server": "npm --prefix server run dev",
+    "client": "npm --prefix client run dev",
+    "seed": "npm --prefix server run seed",
+    "install-all": "npm install && npm --prefix server install && npm --prefix client install",
+    "build": "npm --prefix client run build"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  },
+  "keywords": [
+    "fintech",
+    "wallet",
+    "lending",
+    "socket.io",
+    "mern",
+    "react",
+    "nodejs",
+    "mongodb"
+  ],
+  "author": "",
+  "license": "ISC"
+}
