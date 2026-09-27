@@ -114,12 +114,62 @@ const computeFinancialMetrics = (transactions, lendingRelationships, currentUser
 };
 
 /**
+ * Helper to call Gemini Generative Language API with model fallback and error logging
+ */
+const callGeminiApi = async (prompt, isJson = false) => {
+  const apiKey = process.env.AI_API_KEY;
+  if (!apiKey) return null;
+
+  const configuredModel = process.env.AI_MODEL;
+  // Models to attempt: user configured model -> gemini-3.8-flash -> gemini-flash-latest
+  const candidateModels = [
+    ...(configuredModel ? [configuredModel] : []),
+    'gemini-3.8-flash',
+    'gemini-flash-latest',
+  ];
+  const uniqueModels = [...new Set(candidateModels)];
+
+  for (const model of uniqueModels) {
+    try {
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+      const payload = {
+        contents: [{ parts: [{ text: prompt }] }],
+      };
+      if (isJson) {
+        payload.generationConfig = { responseMimeType: 'application/json' };
+      }
+
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+        if (text) {
+          return { text: text.trim(), model };
+        }
+      } else {
+        const errorText = await response.text();
+        console.warn(`[AI Service] Model ${model} returned HTTP ${response.status}: ${errorText}`);
+      }
+    } catch (err) {
+      console.warn(`[AI Service] Error calling Gemini API (${model}):`, err.message);
+    }
+  }
+
+  return null;
+};
+
+/**
  * Generate Structured Financial Summary
  */
 const generateFinancialSummary = async (transactions, lendingRelationships, userId, userName = 'User') => {
   const metrics = computeFinancialMetrics(transactions, lendingRelationships, userId);
 
-  // If Gemini or OpenAI key is available, we can format a prompt and query the API
+  // If Gemini key is available, format a prompt and query the API
   const apiKey = process.env.AI_API_KEY;
   if (apiKey) {
     try {
@@ -145,31 +195,20 @@ Return ONLY valid JSON matching this schema:
 }
 Keep recommendations realistic, grounded in recorded data, and never promise guaranteed financial advice.`;
 
-      // Call Gemini API (using standard v1beta API format)
-      const response = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            contents: [{ parts: [{ text: prompt }] }],
-            generationConfig: { responseMimeType: 'application/json' },
-          }),
+      const geminiResult = await callGeminiApi(prompt, true);
+      if (geminiResult?.text) {
+        let jsonStr = geminiResult.text;
+        if (jsonStr.startsWith('```')) {
+          jsonStr = jsonStr.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '');
         }
-      );
-
-      if (response.ok) {
-        const data = await response.json();
-        const jsonText = data.candidates?.[0]?.content?.parts?.[0]?.text;
-        if (jsonText) {
-          const parsed = JSON.parse(jsonText);
-          return {
-            success: true,
-            metrics,
-            aiGenerated: true,
-            ...parsed,
-          };
-        }
+        const parsed = JSON.parse(jsonStr);
+        return {
+          success: true,
+          metrics,
+          aiGenerated: true,
+          model: geminiResult.model,
+          ...parsed,
+        };
       }
     } catch (err) {
       console.warn('External AI call failed, falling back to built-in analytics engine:', err.message);
@@ -259,23 +298,9 @@ Here is the exact real-time financial context from the user's database:
 
 Answer the user's question directly, accurately, concisely, and warmly. Base your answer strictly on the above data. Do not make up figures. Use ₹ (INR) symbols.`;
 
-      const response = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            contents: [{ parts: [{ text: prompt }] }],
-          }),
-        }
-      );
-
-      if (response.ok) {
-        const data = await response.json();
-        const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
-        if (text) {
-          return { answer: text.trim(), source: 'gemini' };
-        }
+      const geminiResult = await callGeminiApi(prompt, false);
+      if (geminiResult?.text) {
+        return { answer: geminiResult.text, source: 'gemini', model: geminiResult.model };
       }
     } catch (err) {
       console.warn('External AI query failed, falling back to local NLP handler:', err.message);

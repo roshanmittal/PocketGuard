@@ -6,7 +6,11 @@ const dotenv = require('dotenv');
 const mongoose = require('mongoose');
 const { Server } = require('socket.io');
 
-// Load environment variables
+const path = require('path');
+
+// Load environment variables (from server/.env and root .env)
+dotenv.config({ path: path.join(__dirname, '.env') });
+dotenv.config({ path: path.join(__dirname, '..', '.env') });
 dotenv.config();
 
 const { initSocket } = require('./sockets/socketManager');
