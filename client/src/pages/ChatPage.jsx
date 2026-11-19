@@ -64,7 +64,9 @@ const ChatPage = () => {
           // Clear unread badge in sidebar locally
           setConversations((prev) =>
             prev.map((c) =>
-              c._id === activeConversationId ? { ...c, unreadCount: 0 } : c
+              (c._id || '').toString() === activeConversationId.toString()
+                ? { ...c, unreadCount: 0 }
+                : c
             )
           );
 
@@ -88,20 +90,29 @@ const ChatPage = () => {
     if (!socket) return;
 
     const handleNewMessage = (msg) => {
-      // If message belongs to active conversation, append to list
-      if (activeConversationId && msg.conversation.toString() === activeConversationId.toString()) {
-        setMessages((prev) => [...prev, msg]);
+      if (!msg || !msg._id) return;
+      const msgConvId = (msg.conversation?._id || msg.conversation || '').toString();
+
+      // If message belongs to active conversation, append to list without duplicates
+      if (activeConversationId && msgConvId === activeConversationId.toString()) {
+        setMessages((prev) => {
+          const msgId = msg._id.toString();
+          const exists = prev.some((m) => m._id && m._id.toString() === msgId);
+          if (exists) return prev;
+          return [...prev, msg];
+        });
       }
 
-      // Update last message in sidebar
+      // Update last message & unread badge in sidebar
       setConversations((prev) =>
         prev.map((c) => {
-          if (c._id === msg.conversation.toString()) {
+          const cId = c._id ? c._id.toString() : '';
+          if (cId === msgConvId) {
+            const isCurrentActive = cId === activeConversationId?.toString();
             return {
               ...c,
               lastMessage: msg,
-              unreadCount:
-                c._id === activeConversationId ? 0 : (c.unreadCount || 0) + 1,
+              unreadCount: isCurrentActive ? 0 : (c.unreadCount || 0) + 1,
             };
           }
           return c;
@@ -109,14 +120,18 @@ const ChatPage = () => {
       );
     };
 
+    const handleReceivedMessage = (data) => {
+      if (data?.message) {
+        handleNewMessage(data.message);
+      }
+    };
+
     socket.on('message:new', handleNewMessage);
-    socket.on('message:received', (data) => {
-      handleNewMessage(data.message);
-    });
+    socket.on('message:received', handleReceivedMessage);
 
     return () => {
       socket.off('message:new', handleNewMessage);
-      socket.off('message:received');
+      socket.off('message:received', handleReceivedMessage);
     };
   }, [socket, activeConversationId]);
 

@@ -221,8 +221,69 @@ const deleteTransaction = async (req, res, next) => {
   }
 };
 
+// @desc    Update a personal transaction
+// @route   PUT /api/transactions/:id
+// @access  Private
+const updateTransaction = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user._id;
+    const { amount, category, description, date } = req.body;
+
+    const transaction = await Transaction.findById(id);
+    if (!transaction) {
+      return res.status(404).json({ success: false, message: 'Transaction not found' });
+    }
+
+    if (transaction.createdBy.toString() !== userId.toString()) {
+      return res.status(403).json({ success: false, message: 'Not authorized to edit this transaction' });
+    }
+
+    let balanceDelta = 0;
+    if (amount !== undefined && !isNaN(Number(amount))) {
+      const newAmt = Number(amount);
+      if (newAmt <= 0) {
+        return res.status(400).json({ success: false, message: 'Amount must be greater than zero' });
+      }
+      const oldAmt = transaction.amount;
+      if (transaction.type === 'income') balanceDelta = newAmt - oldAmt;
+      else if (transaction.type === 'expense') balanceDelta = -(newAmt - oldAmt);
+      transaction.amount = newAmt;
+    }
+
+    if (category) transaction.category = category;
+    if (description !== undefined) transaction.description = description;
+    if (date) transaction.date = new Date(date);
+
+    await transaction.save();
+
+    let updatedUser = null;
+    if (balanceDelta !== 0) {
+      updatedUser = await User.findByIdAndUpdate(
+        userId,
+        { $inc: { walletBalance: balanceDelta } },
+        { new: true }
+      );
+    } else {
+      updatedUser = await User.findById(userId);
+    }
+
+    emitToUser(userId, 'wallet:update', { walletBalance: updatedUser.walletBalance });
+    emitToUser(userId, 'transaction:new', transaction);
+
+    res.json({
+      success: true,
+      message: 'Transaction updated successfully',
+      data: transaction,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   getTransactions,
   createTransaction,
+  updateTransaction,
   deleteTransaction,
 };

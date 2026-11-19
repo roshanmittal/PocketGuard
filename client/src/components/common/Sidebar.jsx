@@ -17,7 +17,7 @@ const navItems = [
   { name: 'Lending & Debt', path: '/lending', icon: Users },
   { name: 'Transactions', path: '/transactions', icon: Receipt },
   { name: 'Live Chat', path: '/chat', icon: MessageSquare, hasBadge: true },
-  { name: 'AI Analysis', path: '/ai', icon: Sparkles, highlight: true },
+  { name: 'AI Financial Intelligence', path: '/ai', icon: Sparkles, highlight: true },
   { name: 'Profile', path: '/profile', icon: User },
 ];
 
